@@ -2,8 +2,8 @@
 
 Evaluating LLM-based text-to-SQL conversion on a football (soccer) World Cup database using a multi-step LangGraph pipeline.
 
-**Course**: IIS2 - ZHAW, FS26
-**Team**: Bjoern Wagner, Leo Kryeziu, Michal Johnson
+**Course**: IIS2, DWH2_Project - ZHAW, FS26
+**Team**: Johnson Michal, Kryeziu Leona, Wagner Bjoern
 
 ## Overview
 
@@ -37,23 +37,23 @@ Question
 
 The `exp_v3` PostgreSQL schema contains 15 tables covering FIFA World Cup data:
 
-| Table | Description |
-|---|---|
-| `world_cup` | Tournament info (year, venue, attendance) |
-| `world_cup_result` | Winners and runners-up |
-| `national_team` | National team rosters per year |
-| `player` | Player profiles |
-| `player_fact` | Player-national team links |
-| `match_fact` | Per-player match stats (goals, cards) |
-| `plays_match` | Match-level data (stage, score, stadium) |
-| `national_opponent_team` | Opponent teams in matches |
-| `stadium` | Stadium information |
-| `club` | Football clubs |
-| `club_league_history` | Club league participation |
-| `coach` | Coach profiles |
-| `coach_club_team` | Coach-club assignments |
-| `player_club_team` | Player-club assignments |
-| `league` | League information |
+| Table                      | Description                               |
+| -------------------------- | ----------------------------------------- |
+| `world_cup`              | Tournament info (year, venue, attendance) |
+| `world_cup_result`       | Winners and runners-up                    |
+| `national_team`          | National team rosters per year            |
+| `player`                 | Player profiles                           |
+| `player_fact`            | Player-national team links                |
+| `match_fact`             | Per-player match stats (goals, cards)     |
+| `plays_match`            | Match-level data (stage, score, stadium)  |
+| `national_opponent_team` | Opponent teams in matches                 |
+| `stadium`                | Stadium information                       |
+| `club`                   | Football clubs                            |
+| `club_league_history`    | Club league participation                 |
+| `coach`                  | Coach profiles                            |
+| `coach_club_team`        | Coach-club assignments                    |
+| `player_club_team`       | Player-club assignments                   |
+| `league`                 | League information                        |
 
 ## Dataset
 
@@ -61,6 +61,10 @@ The `exp_v3` PostgreSQL schema contains 15 tables covering FIFA World Cup data:
 - **Validation set** (`data/dev.json`): 100 questions with gold SQL queries
 
 Difficulty distribution (per set): ~9 easy, ~19 medium, ~36 hard, ~36 extra-hard.
+
+For evaluation we use a **hand-selected subset of 18 questions** from `data/dev.json`,
+balanced across difficulty levels (3 easy / 6 medium / 5 hard / 4 extra-hard) so that
+half are easy/medium and half are hard/extra-hard.
 
 ## Setup
 
@@ -124,15 +128,45 @@ eval_results = evaluate(TEST_SET, verbose=True)
 
 ## Results
 
-Evaluated on 18 test questions (9 easy/medium, 9 hard/extra-hard) using **execution accuracy** (predicted result must match gold result exactly).
+Evaluated using **execution accuracy** — the predicted query is correct iff
+its executed result set matches the gold result set exactly.
 
-| Metric | Score |
-|---|---|
-| **Execution Accuracy** | **50.0%** (9/18) |
+![Iteration progression: from 22.2% to 94.4%](image/README/1779807458133.png)
 
-**Works well**: simple aggregations, group stage queries, World Cup winner lookups, team participation counts.
+### Iteration progression (18-question test set)
 
-**Struggles with**: complex multi-table JOINs, player-level statistics, opponent team queries, multi-step aggregations.
+| Configuration                                | Accuracy                   |
+| -------------------------------------------- | -------------------------- |
+| llama3.2:1b, zero-shot                       | 22.2%  (4 / 18)            |
+| qwen2.5-coder:14b, zero-shot                 | 27.8%  (5 / 18)            |
+| qwen2.5-coder:14b + in-context               | 38.9%  (7 / 18)            |
+| qwen2.5-coder:14b + TABLE_GUIDE              | 72.2%  (13 / 18)           |
+| qwen2.5-coder:14b + TABLE_GUIDE + 8 few-shot | **94.4%  (17 / 18)** |
+
+The single remaining error in the final run was an extra column in the SELECT,
+not a wrong result.
+
+### Generalization check (held-out 18 questions)
+
+To test whether the final pipeline generalizes or overfits to the
+development questions, we ran it on a second held-out subset of 18 unseen
+questions from `data/dev.json`.
+
+| Metric             | Score           |
+| ------------------ | --------------- |
+| Execution Accuracy | 50.0%  (9 / 18) |
+
+The drop from 94.4% → 50.0% indicates partial overfitting to the tuned set.
+
+### What worked, what didn't
+
+**Biggest wins**: adding the `TABLE_GUIDE` (schema description with usage
+hints) and 8 curated few-shot examples — together they took the pipeline
+from 27.8% to 94.4%.
+
+**Remaining weakness**: aggregation logic (`SUM` / `COUNT` / `GROUP BY`) on
+unseen question shapes — 4 of the 9 held-out errors come from this
+category.
 
 ## Project Structure
 
@@ -143,9 +177,11 @@ dwh2-text-to-sql/
 │   ├── train.json               # 100 training questions
 │   └── dev.json                 # 100 validation questions
 ├── docs/
-│   ├── DHW2_Wagner_Kryeziu_Johnson.pptx
-│   ├── Final Project-2026.pdf
-│   └── Football dataset.pdf
+│   ├── DHW2_Wagner_Kryeziu_Johnson.pptx   # Final presentation (slides)
+│   ├── Final Project-2026.pdf             # Assignment brief
+│   ├── Football dataset.pdf               # Dataset documentation
+│   └── StatbotSwiss Dataset.pdf           # Alternative dataset reference
+├── image/                       # README assets
 ├── .env                         # DB & LLM config (gitignored)
 └── README.md
 ```
